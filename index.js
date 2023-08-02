@@ -1,39 +1,57 @@
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
+const { db, initializeDatabase } = require('./db');
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-let employees = [];
+initializeDatabase()
+  .then(() => {
+    app.get('/', (req, res) => {
+      res.sendFile(__dirname + '/index.html');
+    });
 
-// Main screen to display in/out status and allow login/logout
-app.get('/', (req, res) => {
-  res.send(`
-    <h1>Employee Tracking App</h1>
-    <form action="/login" method="POST">
-      <input type="text" name="name" placeholder="Enter your name" required />
-      <button type="submit">Log In/Out</button>
-    </form>
-    <h2>Employee Status</h2>
-    <ul>
-      ${employees.map(employee => `<li>${employee.name}: ${employee.status}</li>`).join('')}
-    </ul>
-  `);
-});
+    app.get('/get-employees', (req, res) => {
+      db.all('SELECT * FROM employees', (err, rows) => {
+        if (err) {
+          console.error('Error fetching employees:', err);
+          res.json([]);
+        } else {
+          res.json(rows);
+        }
+      });
+    });
 
-// Login/Logout route
-app.post('/login', (req, res) => {
-  const { name } = req.body;
-  const existingEmployee = employees.find(employee => employee.name === name);
-  if (existingEmployee) {
-    existingEmployee.status = existingEmployee.status === 'In' ? 'Out' : 'In';
-  } else {
-    employees.push({ name, status: 'In' });
-  }
-  res.redirect('/');
-});
+    app.post('/login', (req, res) => {
+      const { username, pin } = req.body;
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+      db.get('SELECT * FROM employees WHERE username = ?', [username], (err, row) => {
+        if (err) {
+          console.error('Error fetching employee:', err);
+          res.json({ error: 'Error fetching employee' });
+        } else if (!row) {
+          res.json({ error: `Employee with username "${username}" not found.` });
+        } else if (row.pin !== pin) {
+          res.json({ error: `Invalid PIN for "${row.name}". Please try again.` });
+        } else {
+          const newStatus = row.status === 'In' ? 'Out' : 'In';
+          db.run('UPDATE employees SET status = ? WHERE id = ?', [newStatus, row.id], (err) => {
+            if (err) {
+              console.error('Error updating status:', err);
+              res.json({ error: 'Error updating status' });
+            } else {
+              res.json({ success: true });
+            }
+          });
+        }
+      });
+    });
+
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Error initializing database:', err);
+  });
