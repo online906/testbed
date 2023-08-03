@@ -1,33 +1,30 @@
-// db.js
-const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./employees.db'); // Use a file path for persistent storage.
+const { Pool } = require('pg');
+const dotenv = require('dotenv');
 
-const initializeDatabase = () => {
-  return new Promise((resolve, reject) => {
-    db.run(`
+dotenv.config({ path: '.env' });
+
+const pool = new Pool({
+  connectionString: process.env.POSTGRES_URL + "?sslmode=require",
+});
+
+const initializeDatabase = async () => {
+  try {
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS employees (
-        id INTEGER PRIMARY KEY,
+        id SERIAL PRIMARY KEY,
         username TEXT UNIQUE,
         name TEXT,
         pin TEXT,
         status TEXT
       )
-    `, (err) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve();
-      }
-    });
-  });
-};
-
-const closeDatabase = () => {
-  db.close();
+    `);
+    console.log('Database initialized');
+  } catch (err) {
+    console.error('Error initializing database:', err);
+  }
 };
 
 module.exports = {
-  db,
+  pool,
   initializeDatabase,
-  closeDatabase,
 };
